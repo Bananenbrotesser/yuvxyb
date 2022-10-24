@@ -1,21 +1,17 @@
 #![allow(clippy::many_single_char_names)]
-
+use libm::cbrtf;
 const K_M02: f32 = 0.078f32;
 const K_M00: f32 = 0.30f32;
 const K_M01: f32 = 1.0f32 - K_M02 - K_M00;
-
 const K_M12: f32 = 0.078f32;
 const K_M10: f32 = 0.23f32;
 const K_M11: f32 = 1.0f32 - K_M12 - K_M10;
-
 const K_M20: f32 = 0.243_422_69_f32;
 const K_M21: f32 = 0.204_767_45_f32;
 const K_M22: f32 = 1.0f32 - K_M20 - K_M21;
-
 const K_B0: f32 = 0.003_793_073_4_f32;
 const K_B1: f32 = K_B0;
 const K_B2: f32 = K_B0;
-
 const OPSIN_ABSORBANCE_MATRIX: [f32; 9] = [
     K_M00, K_M01, K_M02, K_M10, K_M11, K_M12, K_M20, K_M21, K_M22,
 ];
@@ -32,7 +28,6 @@ const INVERSE_OPSIN_ABSORBANCE_MATRIX: [f32; 9] = [
     1.945_928_2_f32,
 ];
 const NEG_OPSIN_ABSORBANCE_BIAS: [f32; 3] = [-K_B0, -K_B1, -K_B2];
-
 /// Converts 32-bit floating point linear RGB to XYB. This function does assume
 /// that the input is Linear RGB. If you pass it gamma-encoded RGB, the results
 /// will be incorrect.
@@ -40,7 +35,7 @@ const NEG_OPSIN_ABSORBANCE_BIAS: [f32; 3] = [-K_B0, -K_B1, -K_B2];
 pub fn linear_rgb_to_xyb(input: &[[f32; 3]]) -> Vec<[f32; 3]> {
     let mut absorbance_bias = [0.0f32; 3];
     for (out, bias) in absorbance_bias.iter_mut().zip(OPSIN_ABSORBANCE_BIAS.iter()) {
-        *out = -(bias.powf(1f32 / 3f32));
+        *out = -cbrtf(*bias);
     }
 
     input
@@ -51,7 +46,7 @@ pub fn linear_rgb_to_xyb(input: &[[f32; 3]]) -> Vec<[f32; 3]> {
                 if *mixed < 0.0 {
                     *mixed = 0.0;
                 }
-                *mixed = mixed.powf(1f32 / 3f32) + (*absorb);
+                *mixed = cbrtf(*mixed) + (*absorb);
             }
             // For wide-gamut inputs, r/g/b and valx (but not y/z) are often negative.
             mixed_to_xyb(&mixed)
@@ -65,7 +60,7 @@ pub fn linear_rgb_to_xyb(input: &[[f32; 3]]) -> Vec<[f32; 3]> {
 pub fn xyb_to_linear_rgb(input: &[[f32; 3]]) -> Vec<[f32; 3]> {
     let mut biases_cbrt = NEG_OPSIN_ABSORBANCE_BIAS;
     for bias in &mut biases_cbrt {
-        *bias = bias.powf(1f32 / 3f32);
+        *bias = cbrtf(*bias);
     }
 
     input
@@ -141,11 +136,8 @@ mod tests {
         fs,
         path::{Path, PathBuf},
     };
-
     use av_data::pixel::{ColorPrimaries, TransferCharacteristic};
-
     use crate::{Rgb, Xyb};
-
     fn parse_xyb_txt(path: &Path) -> Vec<[f32; 3]> {
         let input = fs::read_to_string(path).unwrap();
         input
@@ -183,7 +175,6 @@ mod tests {
         )
         .unwrap();
         let expected_data = parse_xyb_txt(&expected_path);
-
         let result = Xyb::try_from(&source).unwrap();
         for (exp, res) in expected_data.into_iter().zip(result.data()) {
             assert!(
@@ -223,7 +214,6 @@ mod tests {
             .chunks_exact(3)
             .map(|chunk| [chunk[0], chunk[1], chunk[2]])
             .collect::<Vec<_>>();
-
         let result =
             Rgb::try_from((&source, TransferCharacteristic::SRGB, ColorPrimaries::BT709)).unwrap();
         for (exp, res) in expected_data.into_iter().zip(result.data()) {
